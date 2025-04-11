@@ -4,10 +4,6 @@ Dự án này là một ứng dụng web đơn giản sử dụng **Goong Maps A
 
 ## 🚀 Demo
 
-![bus-map-demo](https://user-images.githubusercontent.com/your-image-link/demo.gif)  
-*Ví dụ minh họa 
-
----
 
 ## 🧰 Công nghệ sử dụng
 
