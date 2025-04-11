@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Bản đồ tuyến xe buýt</title>
+  <link href="https://cdn.jsdelivr.net/npm/@goongmaps/goong-js@1.0.9/dist/goong-js.css" rel="stylesheet"/>
+  <script src="https://cdn.jsdelivr.net/npm/@goongmaps/goong-js@1.0.9/dist/goong-js.js"></script>
+  <style>
+    html, body { margin: 0; padding: 0; height: 100%; font-family: Arial; }
+    #map { width: 100%; height: 90%; }
+    #controls {
+      padding: 10px;
+      background: #fff;
+      position: absolute;
+      z-index: 1;
+      width: 100%;
+    }
+    select, button {
+      padding: 6px;
+      margin: 4px;
+    }
+  </style>
+</head>
+<body>
+
+<div id="controls">
+  <select id="startSelect">
+    <option value="">-- Chọn trạm bắt đầu --</option>
+  </select>
+  <select id="endSelect">
+    <option value="">-- Chọn trạm kết thúc --</option>
+  </select>
+  <button onclick="showRoute()">Xem tuyến</button>
+</div>
+
+<div id="map"></div>
+<!-- Thêm đoạn này vào dưới div #map -->
+<div id="route-info" style="padding: 10px; font-size: 16px; background: #f0f0f0;"></div>
+
+
+<script>
+  const GOONG_API_KEY = 'Your_Key';
+  goongjs.accessToken = GOONG_API_KEY;
+  const key = "Your_Key";
+  const map = new goongjs.Map({
+    container: 'map',
+    style: 'https://tiles.goong.io/assets/goong_map_web.json',
+    center: [106.6824, 10.7698],
+    zoom: 14
+  });
+
+  const busStops = [
+    { name: "Trạm Công viên Âu Lạc", lat: 10.7698, lng: 106.6824 },
+    { name: "Trạm Trường ĐH Khoa học Tự nhiên", lat: 10.7646, lng: 106.6823 },
+    { name: "Trạm Đại học Sài Gòn", lat: 10.7554, lng: 106.6835 },
+    { name: "Trạm Trường CĐ Kinh tế TP.HCM", lat: 10.7650, lng: 106.6765 },
+    { name: "Trạm Tiệm cơm chay Pháp Hoa", lat: 10.7730, lng: 106.6902 },
+    { name: "Trạm Trường Cao Đẳng Phát Thanh Truyền Hình", lat: 10.7565, lng: 106.6788 },
+    { name: "Trạm Nhà hàng Cô Đào", lat: 10.7512, lng: 106.6812 },
+    { name: "Trạm Trường ĐH Sân khấu - Điện ảnh", lat: 10.7770, lng: 106.6905 }
+  ];
+
+  // Hiển thị marker cho các trạm
+  busStops.forEach(stop => {
+    new goongjs.Marker()
+      .setLngLat([stop.lng, stop.lat])
+      .setPopup(new goongjs.Popup().setText(stop.name))
+      .addTo(map);
+  });
+
+  // Đổ danh sách trạm vào dropdown
+  const startSelect = document.getElementById("startSelect");
+  const endSelect = document.getElementById("endSelect");
+
+  busStops.forEach((stop, index) => {
+    const option1 = new Option(stop.name, index);
+    const option2 = new Option(stop.name, index);
+    startSelect.add(option1);
+    endSelect.add(option2);
+  });
+
+  function decodePolyline(str) {
+    let index = 0, lat = 0, lng = 0, coordinates = [];
+    while (index < str.length) {
+      let b, shift = 0, result = 0;
+      do {
+        b = str.charCodeAt(index++) - 63;
+        result |= (b & 0x1f) << shift;
+        shift += 5;
+      } while (b >= 0x20);
+      const dlat = (result & 1) ? ~(result >> 1) : (result >> 1);
+      lat += dlat;
+
+      shift = 0;
+      result = 0;
+      do {
+        b = str.charCodeAt(index++) - 63;
+        result |= (b & 0x1f) << shift;
+        shift += 5;
+      } while (b >= 0x20);
+      const dlng = (result & 1) ? ~(result >> 1) : (result >> 1);
+      lng += dlng;
+
+      coordinates.push([lng / 1e5, lat / 1e5]);
+    }
+    return coordinates;
+  }
+
+  function showRoute() {
+    const startIndex = startSelect.value;
+    const endIndex = endSelect.value;
+  
+    if (startIndex === "" || endIndex === "") {
+      alert("Vui lòng chọn cả hai trạm.");
+      return;
+    }
+  
+    const start = busStops[startIndex];
+    const end = busStops[endIndex];
+  
+    const url = `https://rsapi.goong.io/Direction?origin=${start.lat},${start.lng}&destination=${end.lat},${end.lng}&vehicle=car&api_key=${key}`;
+  
+    fetch(url)
+      .then(res => res.json())
+      .then(data => {
+        if (!data.routes || data.routes.length === 0) {
+          throw new Error("Không tìm thấy tuyến phù hợp");
+        }
+  
+        const route = data.routes[0];
+        const coordinates = decodePolyline(route.overview_polyline.points);
+  
+        // Xóa tuyến cũ nếu có
+        if (map.getSource('route')) {
+          map.removeLayer('route');
+          map.removeSource('route');
+        }
+  
+        map.addSource('route', {
+          type: 'geojson',
+          data: {
+            type: 'Feature',
+            geometry: {
+              type: 'LineString',
+              coordinates: coordinates
+            }
+          }
+        });
+  
+        map.addLayer({
+          id: 'route',
+          type: 'line',
+          source: 'route',
+          layout: { 'line-join': 'round', 'line-cap': 'round' },
+          paint: { 'line-color': '#ff0000', 'line-width': 4 }
+        });
+  
+        map.fitBounds([
+          [start.lng, start.lat],
+          [end.lng, end.lat]
+        ], { padding: 50 });
+  
+        // 👉 Hiển thị thông tin tuyến
+        document.getElementById('route-info').innerHTML = `
+          <strong>Tuyến đường:</strong><br>
+          Từ: ${route.legs[0].start_address}<br>
+          Đến: ${route.legs[0].end_address}<br>
+          Quãng đường: ${route.legs[0].distance.text}<br>
+          Thời gian di chuyển: ${route.legs[0].duration.text}
+        `;
+      })
+      .catch(err => {
+        console.error(err);
+        alert("Lỗi: " + err.message);
+      });
+  }
+  
+</script>
+</body>
+</html>
